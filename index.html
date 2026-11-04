@@ -1,0 +1,93 @@
+<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>Riftbound Sim</title>
+<style>
+:root{--bg:#f4f1ea;--sf:#fff;--tx:#1d1b16;--mu:#756f63;--ac:#b8862b;--bd:#ddd6c6;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root{--bg:#14161c;--sf:#1e222b;--tx:#ece8dd;--mu:#9a968a;--ac:#e0b04f;--bd:#333847}}
+*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--tx);font:15px system-ui,sans-serif}
+body{padding:0 12px 84px}h1{font-size:18px;margin:0}
+.top{display:flex;justify-content:space-between;align-items:center;position:sticky;top:env(safe-area-inset-top,0px);background:var(--bg);padding:10px 0;z-index:5}
+.coin{font-weight:700;color:var(--ac)}
+button,select,textarea{font:inherit;color:var(--tx);background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:9px 12px}
+button.p{background:var(--ac);color:#111;border:0;font-weight:700}button:disabled{opacity:.4}
+.g{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.c{background:var(--sf);border:2px solid var(--r);border-radius:10px;padding:5px;font-size:11px;position:relative}
+.im{position:relative;aspect-ratio:744/1039;background:var(--bd);border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;text-align:center;padding:4px}
+.im img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.c small{color:var(--r);font-weight:700;display:block;margin-top:4px}.c i{font-style:normal;color:var(--mu)}
+.c.f{box-shadow:0 0 12px var(--r)}.c.x{opacity:.55}.c.x img{filter:grayscale(1) brightness(.35)}
+.c button{width:100%;padding:5px;font-size:11px;margin-top:4px}
+.n{position:absolute;top:8px;right:8px;z-index:2;background:var(--sf);border-radius:8px;padding:1px 6px;font-weight:700}
+nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--sf);border-top:1px solid var(--bd);padding-bottom:env(safe-area-inset-bottom,0px);z-index:6}
+nav button{flex:1;border:0;border-radius:0;background:none;padding:14px 2px;color:var(--mu);font-size:13px}nav button.on{color:var(--ac);font-weight:700}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}.mu{color:var(--mu);font-size:13px}
+.warn{background:var(--sf);border:1px solid var(--ac);border-radius:10px;padding:10px;margin:8px 0}
+textarea{width:100%;height:120px}.t{position:fixed;left:50%;transform:translateX(-50%);bottom:90px;background:var(--tx);color:var(--bg);padding:8px 14px;border-radius:20px;z-index:9}
+.gg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}.gc{height:84px;font-size:32px;padding:0}
+</style></head><body>
+<div class="top"><h1>Riftbound Sim</h1><span class="coin" id="co"></span></div>
+<div id="v"></div>
+<nav><button data-t="o">Abrir</button><button data-t="a">Álbum</button><button data-t="m">Mercado</button><button data-t="j">Minijuego</button><button data-t="s">Ajustes</button></nav>
+<script>
+const API='https://api.riftcodex.com/cards',PACK=100,K=20,EXP=.7;
+const RC={C:'#8a8f98',U:'#3fa66b',R:'#3b82f6',E:'#a855f7',S:'#f59e0b',T:'#64748b'},RN={C:'Común',U:'Poco común',R:'Rara',E:'Épica',S:'Showcase',T:'Runa'},DEF={C:.05,U:.12,R:.6,E:4,S:40,T:.02};
+const rng=a=>()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let st;try{st=JSON.parse(localStorage.getItem('rb2'))}catch(e){}
+st=st||{coins:1000,inv:{},pool:[],labels:{},set:'',day:0,bought:[],cd:0,prices:{},api:0,msg:''};
+const save=()=>{try{localStorage.setItem('rb2',JSON.stringify(st))}catch(e){}};
+const $=id=>document.getElementById(id);let tab='o',last=[],busy=0,gm=null;
+const price=(n,k)=>{const p=st.prices[n.toLowerCase()];return p!=null?p:DEF[k]};
+const W=c=>Math.pow(Math.max(c.p,.01),-EXP),sellV=c=>Math.max(1,Math.floor(c.p*K*.7)),sets=()=>Object.keys(st.labels);
+const rar=c=>{const cl=c.classification||{},t=String(cl.type||cl.supertype||'').toLowerCase(),r=String(cl.rarity||c.rarity||'').toLowerCase();
+if(/rune|token/.test(t))return'T';if(/showcase|overnumber|ultimate|signature|alt/.test(r))return'S';if(r.includes('uncommon'))return'U';if(r.includes('common'))return'C';if(r.includes('epic'))return'E';if(r.includes('rare'))return'R';return null};
+async function load(){if(busy)return;busy=1;try{const out=[],lab={};let p=1,pg=1,sz=100;
+do{st.msg=`Descargando cartas… ${p}/${pg}`;draw();const r=await fetch(`${API}?size=${sz}&page=${p}`);
+if(!r.ok){if(sz>50){sz=50;continue}throw new Error(r.status)}
+const j=await r.json();pg=j.pages||1;
+for(const c of j.items||[]){const k=rar(c),s=c.set&&c.set.set_id;if(!k||!s)continue;lab[s]=c.set.label||s;out.push({u:String(c.id),s,n:c.name,r:k,p:price(c.name,k),im:(c.media&&c.media.image_url)||''})}
+p++}while(p<=pg);
+if(out.length<50)throw new Error('sin datos');st.pool=out;st.labels=lab;st.api=1;if(!lab[st.set])st.set=Object.keys(lab)[0];st.msg='';save()}
+catch(e){st.msg='No se pudieron descargar las cartas ('+e.message+'). Revisa la conexión y reintenta.'}busy=0;draw()}
+function toast(m){const d=document.createElement('div');d.className='t';d.textContent=m;document.body.appendChild(d);setTimeout(()=>d.remove(),1800)}
+function pick(set,rs){let l=st.pool.filter(c=>c.s==set&&rs.includes(c.r));if(!l.length)l=st.pool.filter(c=>c.s==set);
+let x=Math.random()*l.reduce((a,c)=>a+W(c),0);for(const c of l){x-=W(c);if(x<=0)return c}return l[l.length-1]}
+const rr=()=>{const x=Math.random();return x<.83?'R':x<.96?'E':'S'};
+function open(){if(st.coins<PACK)return toast('Monedas insuficientes');st.coins-=PACK;const s=st.set,a=[];
+for(let i=0;i<7;i++)a.push([pick(s,['C']),0]);for(let i=0;i<3;i++)a.push([pick(s,['U']),0]);
+a.push([pick(s,Math.random()<.5?['C']:['U']),1],[pick(s,[rr()]),1],[pick(s,[rr()]),1],[pick(s,['T']),0]);
+a.forEach(([c])=>st.inv[c.u]=(st.inv[c.u]||0)+1);last=a.sort((x,y)=>x[0].p-y[0].p);save();draw()}
+const card=(c,o={})=>`<div class="c ${o.f?'f':''} ${o.x?'x':''}" style="--r:${RC[c.r]}">${o.n>1?`<span class="n">×${o.n}</span>`:''}<div class="im">${esc(c.n)}${c.im?`<img loading="lazy" referrerpolicy="no-referrer" src="${esc(c.im)}" alt="" onerror="this.remove()">`:''}</div><small>${RN[c.r]}${o.f?' ✦':''}</small><i>€${c.p.toFixed(2)}</i>${o.btn||''}</div>`;
+function market(){const d=Math.floor(Date.now()/864e5);if(st.day!=d){st.day=d;st.bought=[]}const r=rng(d),L=[];for(let k=0;k<12;k++){const c=st.pool[Math.floor(r()*st.pool.length)];L.push({k,c,p:Math.max(1,Math.round(c.p*K*(.9+r()*.5)))})}return L}
+const sel=()=>`<select id="ss">${sets().map(s=>`<option value="${s}" ${s==st.set?'selected':''}>${esc(st.labels[s])}</option>`).join('')}</select>`;
+function dups(){let g=0;st.pool.forEach(c=>{const n=st.inv[c.u]||0;if(n>1){g+=sellV(c)*(n-1);st.inv[c.u]=1}});st.coins+=g;save();toast(g?`+${g} 🪙 por repetidas`:'No tienes repetidas');draw()}
+function play(){if(Date.now()<st.cd)return toast('Espera '+Math.ceil((st.cd-Date.now())/1e3)+' s');
+let sc=0,t=15,cur=-1,bomb=0;const E=['🔥','💧','⚡','🌿','🌀','✨'],cs=[...document.querySelectorAll('.gc')];
+$('go').disabled=true;cs.forEach((b,i)=>b.onclick=()=>{if(i!=cur)return;sc=Math.max(0,sc+(bomb?-2:3));b.textContent='';cur=-1;$('gs').textContent=sc+' 🪙'});
+gm=setInterval(()=>{if(cur>=0)cs[cur].textContent='';t-=.65;if(t<=0){clearInterval(gm);gm=null;st.coins+=sc;st.cd=Date.now()+30000;save();toast(`+${sc} 🪙`);draw();return}
+cur=Math.floor(Math.random()*12);bomb=Math.random()<.25;cs[cur].textContent=bomb?'💣':E[Math.floor(Math.random()*6)];$('ti').textContent=Math.ceil(t)+' s'},650)}
+function draw(){$('co').textContent='🪙 '+st.coins;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t==tab));let h='';
+if(!st.pool.length){$('v').innerHTML=`<p>${esc(st.msg||'Preparando…')}</p><button class="p" id="rl">Descargar cartas</button>`;if($('rl'))$('rl').onclick=load;return}
+if(st.msg&&busy)h+=`<div class="mu">${esc(st.msg)}</div>`;
+if(tab=='o'){h+=`<div class="row">${sel()}<button class="p" id="op" ${st.coins<PACK?'disabled':''}>Abrir sobre (${PACK} 🪙)</button></div>`;
+if(st.coins<PACK)h+=`<div class="warn">Sin monedas para un sobre. Vende repetidas o juega al minijuego.<div class="row"><button id="dp">Vender repetidas</button><button class="p" data-t2="j">Minijuego</button></div></div>`;
+h+=`<div class="g">${last.map(([c,f])=>card(c,{f})).join('')}</div>`}
+if(tab=='a'){const all=st.pool.filter(c=>c.s==st.set),own=all.filter(c=>st.inv[c.u]);
+h+=`<div class="row">${sel()}<span class="mu">${own.length}/${all.length}</span><button id="dp">Vender repetidas</button></div><div class="g">${all.map(c=>st.inv[c.u]?card(c,{n:st.inv[c.u],btn:`<button data-s="${c.u}">Vender ${sellV(c)}🪙</button>`}):card(c,{x:1})).join('')}</div>`}
+if(tab=='m'){const m=market(),ms=864e5-(Date.now()%864e5);h+=`<div class="mu row">Se renueva en ${Math.floor(ms/36e5)} h ${Math.floor(ms%36e5/6e4)} min</div><div class="g">${m.map(o=>st.bought.includes(o.k)?'':card(o.c,{btn:`<button class="p" data-b="${o.k}" ${st.coins<o.p?'disabled':''}>Comprar ${o.p}🪙</button>`})).join('')}</div>`}
+if(tab=='j'){const w=Math.ceil((st.cd-Date.now())/1e3);h+=`<p><b>Rift Rush</b>: 15 s. Toca las runas (+3 🪙) y evita las bombas (−2 🪙). Si cambias de pestaña pierdes la ronda. Espera 30 s entre rondas.</p><div class="row"><button class="p" id="go">${w>0?'Disponible en '+w+' s':'Jugar'}</button><span id="ti" class="mu"></span><b id="gs" class="coin">0 🪙</b></div><div class="gg">${Array.from({length:12},()=>'<button class="gc"></button>').join('')}</div>`}
+if(tab=='s'){h+=`<p class="mu">${sets().length} sets · ${st.pool.length} cartas · imágenes oficiales vía Riftcodex. Precios: ${Object.keys(st.prices).length?Object.keys(st.prices).length+' importados':'<b>estimados por rareza</b>'}. Probabilidad dentro de cada rareza ∝ precio<sup>−${EXP}</sup>.</p>
+<div class="row"><button class="p" id="rl">Actualizar cartas</button></div>
+<p class="mu">Importa precios de Cardmarket (una carta por línea): <code>nombre,precio</code> o <code>set,nombre,rareza,precio</code>. Se cruzan por nombre.</p>
+<textarea id="im" placeholder="Jinx - Loose Cannon,4.50"></textarea><div class="row"><button class="p" id="imp">Importar precios</button><button id="rs">Reiniciar partida</button></div>`}
+$('v').innerHTML=h;
+if($('ss'))$('ss').onchange=e=>{st.set=e.target.value;save();draw()};
+if($('op'))$('op').onclick=open;if($('dp'))$('dp').onclick=dups;if($('rl'))$('rl').onclick=load;if($('go'))$('go').onclick=play;
+document.querySelectorAll('[data-t2]').forEach(b=>b.onclick=()=>{go(b.dataset.t2)});
+document.querySelectorAll('[data-s]').forEach(b=>b.onclick=()=>{const c=st.pool.find(x=>x.u==b.dataset.s);st.coins+=sellV(c);if(--st.inv[c.u]<=0)delete st.inv[c.u];save();draw()});
+document.querySelectorAll('[data-b]').forEach(b=>b.onclick=()=>{const o=market().find(x=>x.k==+b.dataset.b);if(st.coins<o.p)return;st.coins-=o.p;st.inv[o.c.u]=(st.inv[o.c.u]||0)+1;st.bought.push(o.k);save();draw()});
+if($('imp'))$('imp').onclick=()=>{let n=0;$('im').value.split('\n').forEach(l=>{const a=l.split(/[;,\t]/).map(x=>x.trim()),p=parseFloat((a[a.length-1]||'').replace(',','.')),nm=a.length>=4?a[1]:a[0];if(a.length>=2&&nm&&!isNaN(p)){st.prices[nm.toLowerCase()]=p;n++}});
+if(!n)return toast('Sin líneas válidas');st.pool.forEach(c=>c.p=price(c.n,c.r));save();toast(n+' precios importados');draw()};
+if($('rs'))$('rs').onclick=()=>{if(confirm('¿Borrar todo?')){localStorage.removeItem('rb2');location.reload()}}}
+function go(t){if(gm){clearInterval(gm);gm=null}tab=t;draw()}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>go(b.dataset.t));
+draw();if(!st.api)load();
+</script></body></html>
